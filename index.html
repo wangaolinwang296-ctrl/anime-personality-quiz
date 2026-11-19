@@ -169,6 +169,16 @@ h1 .hl{color:var(--pink-deep)}
 .modal-cancel{display:block;margin:12px auto 0;background:none;border:none;color:var(--muted);font-size:13px;text-decoration:underline}
 #btn-invite{grid-column:1/-1;font-size:21px;font-weight:900;padding:22px 24px;margin-top:6px;background:var(--pink);color:#fff;border:none;box-shadow:0 10px 24px rgba(255,107,147,.45);letter-spacing:1px}
 #btn-invite:hover{background:var(--pink-deep)}
+
+.today-card{background:var(--card);border:1.5px dashed var(--line);border-radius:16px;padding:12px 16px;margin-bottom:14px;text-align:center;font-size:15px}
+.today-card b{color:var(--pink-deep)}
+.collection-bar{background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:12px 16px;margin-bottom:14px;text-align:center;font-size:14px}
+.collection-track{height:10px;background:var(--line);border-radius:999px;margin-top:8px;overflow:hidden}
+.collection-fill{height:100%;background:var(--pink);border-radius:999px;width:0%;transition:width .5s}
+.char-mini.collected{outline:2px solid var(--yellow);outline-offset:2px}
+.char-mini.collected::after{content:"✓ 已收集";display:block;font-size:11px;color:#B97E0B;font-weight:700;margin-top:2px}
+.r-collection{text-align:center;font-size:14px;color:var(--muted);margin:10px 0 0}
+.r-collection b{color:var(--pink-deep)}
 footer{text-align:center;color:var(--muted);font-size:12.5px;padding:10px 16px 30px;position:relative;z-index:1}
 </style>
 </head>
@@ -189,6 +199,8 @@ footer{text-align:center;color:var(--muted);font-size:12.5px;padding:10px 16px 3
         <span class="meta-pill"><i style="background:var(--sky)"></i>9 部作品</span>
       </div>
       <div class="invite-banner" id="invite-banner"><span id="invite-text"></span><small id="invite-sub"></small></div>
+      <div class="today-card" id="today-card">今日角色：<b id="today-name"></b>（<span id="today-anime"></span>）· <span id="today-title"></span><br><small style="color:var(--muted)">每天换一位，明天再来看看你是谁</small></div>
+      <div class="collection-bar" id="collection-bar"><span id="collection-text">测一次，开始收集你的角色图鉴</span><div class="collection-track"><div class="collection-fill" id="collection-fill"></div></div></div>
       <button class="btn-primary" id="btn-start">开始测试 →</button>
       <p class="hint">不用想太多，第一反应往往最像你</p>
       <div class="anime-tags" aria-label="涵盖作品">
@@ -239,6 +251,7 @@ footer{text-align:center;color:var(--muted);font-size:12.5px;padding:10px 16px 3
         <span class="match" id="r-match"></span>
       </div>
       <p class="result-player" id="r-player"></p>
+      <p class="r-collection" id="r-collection"></p>
 
       <div class="result-card">
         <p class="quote"><span id="r-quote"></span><small>—— 角色台词</small></p>
@@ -445,6 +458,40 @@ var current = 0;
 var answers = [];
 var LETTERS = ["A","B","C","D"];
 var playerName = ""; var inviterName = ""; var inviterCharId = ""; var lastTopId = "";
+function loadCollection(){
+  try{ var raw = localStorage.getItem("aolin_collection"); var arr = raw ? JSON.parse(raw) : []; return Array.isArray(arr) ? arr : []; }catch(e){ return []; }
+}
+function saveCollection(arr){ try{ localStorage.setItem("aolin_collection", JSON.stringify(arr)); }catch(e){} }
+function renderCollection(){
+  var col = loadCollection();
+  var total = Object.keys(CHARACTERS).length;
+  var n = col.length;
+  var fill = document.getElementById("collection-fill");
+  if(fill){ fill.style.width = Math.round(n/total*100) + "%"; }
+  var txt = document.getElementById("collection-text");
+  if(txt){ txt.textContent = n === 0 ? "测一次，开始收集你的角色图鉴" : ("我的图鉴：已收集 " + n + " / " + total + " 位角色" + (n >= total ? "，全收集了！" : "，还差 " + (total-n) + " 位")); }
+  var grid = document.getElementById("preview-grid");
+  if(grid){
+    var cards = grid.querySelectorAll(".char-mini");
+    var ids = Object.keys(CHARACTERS);
+    for(var i=0;i<cards.length && i<ids.length;i++){
+      if(col.indexOf(ids[i]) !== -1){ cards[i].classList.add("collected"); }
+    }
+  }
+}
+function renderToday(){
+  try{
+    var d = new Date();
+    var key = d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
+    var hash = 0;
+    for(var i=0;i<key.length;i++){ hash = (hash*31 + key.charCodeAt(i)) >>> 0; }
+    var ids = Object.keys(CHARACTERS);
+    var c = CHARACTERS[ids[hash % ids.length]];
+    document.getElementById("today-name").textContent = c.name;
+    document.getElementById("today-anime").textContent = "《" + c.anime + "》";
+    document.getElementById("today-title").textContent = c.title;
+  }catch(e){}
+}
 function escHtml(t){ return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function showToast(msg){ var t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(function(){ t.classList.remove("show"); }, 2600); }
 function buildInviteLink(){
@@ -545,6 +592,17 @@ function showResult(){
   var sorted = Object.keys(scores).sort(function(a,b){ return scores[b]-scores[a]; });
   var topId = sorted[0], subId = sorted[1];
   lastTopId = topId;
+  (function(){
+    var col = loadCollection();
+    var isNew = col.indexOf(topId) === -1;
+    if(isNew){ col.push(topId); saveCollection(col); }
+    var total = Object.keys(CHARACTERS).length;
+    var el = document.getElementById("r-collection");
+    if(el){
+      el.innerHTML = (isNew ? "🎉 <b>" + escHtml(top.name) + "</b>已加入你的图鉴！" : "<b>" + escHtml(top.name) + "</b>已经在你的图鉴里了。") + "已收集 <b>" + col.length + " / " + total + "</b> 位" + (col.length >= total ? "，全收集了！" : "，再测一次，看看能不能集齐新角色！");
+    }
+    renderCollection();
+  })();
   var top = CHARACTERS[topId], sub = CHARACTERS[subId];
   var maxPossible = 36;
   var match = Math.min(99, Math.round(72 + (scores[topId]/maxPossible)*27));
@@ -696,6 +754,8 @@ document.getElementById("btn-all").addEventListener("click", function(){
   document.getElementById("result-grid").scrollIntoView({behavior:"smooth", block:"start"});
 });
 renderPreview();
+renderCollection();
+renderToday();
 </script>
 </body>
 </html>
